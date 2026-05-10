@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LKPD Cyber Detective Pro - Data Cleaning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
+        
+        body { 
+            background-color: #020617; 
+            color: #e2e8f0; 
+            font-family: 'Rajdhani', sans-serif; 
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.1), transparent 20%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1), transparent 20%);
+        }
+
+        h1, h2, h3, .font-orbitron { font-family: 'Orbitron', sans-serif; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #020617; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        /* Screen Transitions */
+        .screen { display: none; animation: fadeIn 0.4s ease-out; }
+        .screen.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+
+        /* Map Nodes */
+        .node { transition: all 0.3s ease; position: relative; }
+        .node.locked { opacity: 0.5; filter: grayscale(100%); cursor: not-allowed; }
+        .node.unlocked { cursor: pointer; box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); border-color: #6366f1; }
+        .node.unlocked:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(99, 102, 241, 0.8); }
+        .node.completed { border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); background-color: rgba(16, 185, 129, 0.1); }
+        .path-line { position: absolute; background-color: #334155; z-index: -1; }
+
+        /* Drag & Drop L1 */
+        .draggable { cursor: grab; transition: transform 0.2s; }
+        .draggable:active { cursor: grabbing; transform: scale(0.95); }
+        .dropzone { transition: all 0.3s; border: 2px dashed #475569; }
+        .dropzone.dragover { border-color: #f59e0b; background-color: rgba(245, 158, 11, 0.1); }
+        .dropzone.correct { border-color: #10b981; background-color: rgba(16, 185, 129, 0.2); border-style: solid; }
+        .dropzone.wrong { border-color: #ef4444; background-color: rgba(239, 68, 68, 0.2); animation: shake 0.4s; }
+
+        /* Terminal L2 */
+        .terminal-input { background: transparent; border: none; border-bottom: 2px solid #10b981; color: #10b981; outline: none; width: 100%; font-family: monospace; font-size: 1.2rem; text-transform: uppercase; }
+
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .shake { animation: shake 0.3s; }
+        
+        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 15px rgba(16,185,129,0.5); } 50% { box-shadow: 0 0 30px rgba(16,185,129,0.8); } }
+        .score-pulse { animation: pulse-green 2s infinite; }
+
+        .leaderboard-row { animation: slideIn 0.5s ease-out forwards; opacity: 0; }
+        @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .current-team-row { border: 2px solid #10b981; background-color: rgba(16, 185, 129, 0.2) !important; font-weight: bold; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div id="audio-toggle" class="fixed bottom-4 right-4 z-50 bg-slate-800 p-2 rounded-full cursor-pointer opacity-50 hover:opacity-100 transition shadow-lg" onclick="window.toggleAudio()" title="Toggle Sound">
+        🔊
+    </div>
+
+    <div id="hud" class="fixed top-0 left-0 w-full bg-slate-950/90 backdrop-blur border-b border-slate-800 p-3 z-50 hidden flex justify-between items-center px-4 md:px-8">
+        <div class="flex items-center gap-4">
+            <span class="text-indigo-400 font-orbitron font-bold text-lg md:text-xl tracking-wider">CYBER_DETECTIVE</span>
+            <div class="hidden md:flex gap-2 text-sm text-slate-400 border-l border-slate-700 pl-4">
+                <span>Tim: <span id="hud-team" class="text-white font-bold uppercase tracking-wider">---</span></span>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <button onclick="window.showScreen('map-screen')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition font-bold text-slate-300 border border-slate-600">🗺️ Peta Level</button>
+            <div class="bg-indigo-950 border border-indigo-500/50 px-4 py-1.5 rounded-lg flex gap-2 items-center">
+                <span class="text-indigo-300 text-xs md:text-sm font-bold">SKOR:</span>
+                <span id="hud-score" class="font-orbitron font-bold text-xl text-emerald-400 drop-shadow-[0_0_5px_#10b981] transition-all">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="menu-screen" class="screen active w-full max-w-3xl pt-8">
+        <div class="text-center mb-8 relative">
+            <button onclick="window.enterTeacherMode()" class="absolute top-0 right-0 bg-slate-800 hover:bg-emerald-700 text-slate-400 hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 border border-slate-700">
+                <span>📊</span> Mode Guru (Live Klasemen)
+            </button>
+            <div class="text-6xl mb-4 animate-bounce mt-8 md:mt-0">🕵️‍♂️💀</div>
+            <h1 class="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-indigo-500 mb-2 font-orbitron drop-shadow-lg">DATA DETECTIVE <span class="text-3xl text-red-500">PRO</span></h1>
+            <p class="text-lg text-slate-400 font-semibold tracking-widest">MISI: PEMBERSIHAN SISTEM TINGKAT TINGGI</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-2xl shadow-red-900/10 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
+            
+            <h2 class="text-2xl font-bold text-indigo-400 border-b border-slate-700 pb-3 mb-6">📝 Registrasi Tim Elit</h2>
+            
+            <div class="bg-red-950/20 border border-red-500/30 rounded-xl p-5 mb-6">
+                <h3 class="font-bold text-red-400 mb-2 flex items-center gap-2"><span>⚠️</span> WARNING: PROTOKOL SULIT!</h3>
+                <ul class="list-disc list-inside space-y-2 text-slate-300 text-sm md:text-base">
+                    <li>Kerjakan LKPD ini <strong>berdua</strong> dalam satu perangkat. Aktifkan Suara.</li>
+                    <li><strong>Pemain 1 (Analis):</strong> Menganalisis masalah dan berdiskusi memilih tindakan yang tepat.</li>
+                    <li><strong>Pemain 2 (Eksekutor):</strong> Mengetik kode perbaikan di Terminal.</li>
+                    <li>Skor akhir akan dikirim ke <strong>Server Guru</strong> secara real-time.</li>
+                </ul>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div>
+                    <label class="block text-slate-400 text-sm font-bold mb-2 uppercase tracking-wider">Pemain 1 (Analis)</label>
+                    <input type="text" id="player1" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-red-500 outline-none text-lg transition" placeholder="Cth: Budi">
+                </div>
+                <div>
+                    <label class="block text-slate-400 text-sm font-bold mb-2 uppercase tracking-wider">Pemain 2 (Eksekutor)</label>
+                    <input type="text" id="player2" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-red-500 outline-none text-lg transition" placeholder="Cth: Siti">
+                </div>
+            </div>
+
+            <button onclick="window.registerTeam()" class="w-full bg-gradient-to-r from-red-600 to-indigo-600 hover:from-red-500 hover:to-indigo-500 text-white font-bold py-4 rounded-xl text-xl transition-all transform hover:scale-[1.02] shadow-lg shadow-red-600/30 font-orbitron tracking-wider">
+                MULAI OPERASI ELIT 🚀
+            </button>
+            <p id="menu-error" class="text-red-400 mt-4 text-center hidden font-bold bg-red-900/20 py-2 rounded">⚠️ Akses Ditolak: Masukkan nama kedua pemain!</p>
+        </div>
+    </div>
+
+    <div id="teacher-screen" class="screen w-full max-w-6xl pt-10">
+        <div class="text-center mb-8 relative">
+            <button onclick="location.reload()" class="absolute top-0 left-0 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 border border-slate-700">
+                <span>🔙</span> Kembali Ke Menu
+            </button>
+            <h1 class="text-5xl font-black text-emerald-400 font-orbitron drop-shadow-[0_0_10px_#10b981]">COMMAND CENTER</h1>
+            <p class="text-xl text-slate-400 font-bold mt-2 uppercase tracking-widest">Live Server Rank</p>
+            <div class="mt-4 inline-flex items-center gap-2 bg-emerald-900/30 border border-emerald-500 px-4 py-2 rounded-full text-emerald-400 text-sm font-bold">
+                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                Sistem Menerima Data Real-Time...
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative min-h-[500px]">
+            <div class="absolute top-[-50%] left-[-10%] w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <table class="w-full text-left relative z-10">
+                <thead class="bg-slate-800 text-slate-400 text-sm uppercase font-bold tracking-wider">
+                    <tr>
+                        <th class="p-4 text-center w-20 rounded-tl-lg">Rank</th>
+                        <th class="p-4">Tim Detektif</th>
+                        <th class="p-4 text-center w-32">Grade</th>
+                        <th class="p-4 text-right w-32 rounded-tr-lg">Skor Akhir</th>
+                    </tr>
+                </thead>
+                <tbody id="live-leaderboard-body" class="divide-y divide-slate-800/50 text-lg">
+                    <tr><td colspan="4" class="text-center p-12 text-slate-500 italic font-bold">Menunggu laporan tim verifikasi selesai...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="map-screen" class="screen w-full max-w-4xl pt-20">
+        <div class="text-center mb-16">
+            <h1 class="text-4xl font-bold text-white mb-2 font-orbitron">🗺️ PETA OPERASI PRO</h1>
+            <p class="text-slate-400 text-lg">Pilih zona karantina yang terbuka.</p>
+        </div>
+
+        <div class="relative w-full max-w-3xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12 md:gap-0 py-10">
+            <div class="hidden md:block absolute top-1/2 left-[15%] w-[70%] h-2 bg-slate-800 -translate-y-1/2 rounded z-0">
+                <div id="path-line" class="h-full bg-emerald-500 rounded transition-all duration-1000 w-0 shadow-[0_0_10px_#10b981]"></div>
+            </div>
+
+            <div id="node-1" onclick="window.loadLevel(1)" class="node unlocked w-44 h-44 bg-slate-900 border-4 rounded-2xl flex flex-col items-center justify-center p-4 z-10 shadow-xl group">
+                <div class="text-4xl mb-2 group-hover:scale-110 transition">🗂️</div>
+                <h3 class="font-bold text-xl text-white font-orbitron">LEVEL 1</h3>
+                <p class="text-sm text-slate-400 text-center leading-tight mt-1 font-semibold">Triage Kritis<br>(Drag & Drop)</p>
+                <div id="badge-1" class="absolute -top-3 -right-3 bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hidden border-2 border-slate-900 shadow-lg">✓</div>
+            </div>
+
+            <div id="node-2" onclick="window.loadLevel(2)" class="node locked w-44 h-44 bg-slate-900 border-4 border-slate-700 rounded-2xl flex flex-col items-center justify-center p-4 z-10 shadow-xl group">
+                <div class="text-4xl mb-2 grayscale opacity-50" id="icon-2">💻</div>
+                <h3 class="font-bold text-xl text-slate-500 font-orbitron" id="title-2">LEVEL 2</h3>
+                <p class="text-sm text-slate-500 text-center leading-tight mt-1 font-semibold" id="desc-2">Command Center<br>(Terminal Fix)</p>
+                <div id="badge-2" class="absolute -top-3 -right-3 bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold hidden border-2 border-slate-900 shadow-lg">✓</div>
+            </div>
+            
+            <div id="node-3" onclick="window.loadLevel(3)" class="node locked w-44 h-44 bg-slate-900 border-4 border-slate-700 rounded-2xl flex flex-col items-center justify-center p-4 z-10 shadow-xl group">
+                <div class="text-4xl mb-2 grayscale opacity-50" id="icon-3">📊</div>
+                <h3 class="font-bold text-xl text-slate-500 font-orbitron" id="title-3">HASIL AKHIR</h3>
+                <p class="text-sm text-slate-500 text-center leading-tight mt-1 font-semibold" id="desc-3">Kirim Laporan</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="level1-screen" class="screen w-full max-w-5xl pt-20">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+            <div class="flex justify-between items-end mb-6 border-b border-slate-700 pb-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-indigo-400 font-orbitron">LEVEL 1: Triage Area</h2>
+                    <p class="text-slate-400 text-sm mt-2"><strong>Misi:</strong> Drag 6 kartu mengecoh ke kotak yang tepat. Benar <span class="text-emerald-400 font-bold">+20 Pts</span>, Salah <span class="text-red-400 font-bold">-10 Pts</span>.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                <div class="dropzone rounded-xl p-4 min-h-[180px] flex flex-col bg-slate-950/50" data-target="duplikat" ondragover="window.allowDrop(event)" ondragleave="window.dragLeave(event)" ondrop="window.drop(event)">
+                    <h3 class="text-center font-bold text-slate-300 mb-3 border-b border-slate-700 pb-2 pointer-events-none">👯‍♂️ DATA DUPLIKAT</h3>
+                    <div class="flex-1 flex flex-col gap-3 pointer-events-none drop-container"></div>
+                </div>
+                <div class="dropzone rounded-xl p-4 min-h-[180px] flex flex-col bg-slate-950/50" data-target="kosong" ondragover="window.allowDrop(event)" ondragleave="window.dragLeave(event)" ondrop="window.drop(event)">
+                    <h3 class="text-center font-bold text-slate-300 mb-3 border-b border-slate-700 pb-2 pointer-events-none">🕳️ DATA KOSONG</h3>
+                    <div class="flex-1 flex flex-col gap-3 pointer-events-none drop-container"></div>
+                </div>
+                <div class="dropzone rounded-xl p-4 min-h-[180px] flex flex-col bg-slate-950/50" data-target="inkonsisten" ondragover="window.allowDrop(event)" ondragleave="window.dragLeave(event)" ondrop="window.drop(event)">
+                    <h3 class="text-center font-bold text-slate-300 mb-3 border-b border-slate-700 pb-2 pointer-events-none">🧩 TIDAK KONSISTEN</h3>
+                    <div class="flex-1 flex flex-col gap-3 pointer-events-none drop-container"></div>
+                </div>
+            </div>
+
+            <div class="bg-black/40 p-5 rounded-xl border border-slate-700">
+                <h4 class="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider text-center">Antrean Data Pendaftar:</h4>
+                <div id="cards-container" class="flex flex-wrap gap-4 justify-center">
+                    </div>
+            </div>
+
+            <div id="l1-success" class="hidden mt-8 text-center bg-emerald-900/20 border border-emerald-500/50 p-6 rounded-xl">
+                <p class="text-emerald-400 font-bold text-xl mb-4 font-orbitron">LEVEL 1 CLEARED!</p>
+                <button onclick="window.completeLevel(1)" class="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-lg font-bold shadow-lg shadow-emerald-500/30 transition-all transform hover:scale-105">Lapor & Lanjut ke Peta</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="level2-screen" class="screen w-full max-w-6xl pt-20">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+            <div class="flex justify-between items-end mb-6 border-b border-slate-700 pb-4">
+                <div>
+                    <h2 class="text-3xl font-bold text-indigo-400 font-orbitron">LEVEL 2: Command Center</h2>
+                    <p class="text-slate-400 text-sm mt-2"><strong>Misi:</strong> Baca *Hint* dan ketik tindakan/perbaikan yang tepat. Benar <span class="text-emerald-400 font-bold">+30 Pts</span>, Salah Syntax <span class="text-red-400 font-bold">-15 Pts</span>.</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col lg:flex-row gap-6">
+                <div class="w-full lg:w-3/5 bg-black rounded-xl border border-slate-700 overflow-x-auto shadow-inner">
+                    <table class="w-full text-left text-sm whitespace-nowrap min-w-max">
+                        <thead class="bg-slate-800 text-slate-400 border-b border-slate-700">
+                            <tr>
+                                <th class="p-3">ID</th>
+                                <th class="p-3">Pendaftar</th>
+                                <th class="p-3">Kelas</th>
+                                <th class="p-3">Kontak</th>
+                                <th class="p-3 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="l2-table" class="font-mono text-[13px] divide-y divide-slate-800">
+                            </tbody>
+                    </table>
+                </div>
+
+                <div class="w-full lg:w-2/5 bg-slate-950 border border-slate-700 rounded-xl p-5 font-mono relative flex flex-col min-h-[320px] shadow-xl">
+                    <div class="text-xs text-slate-500 border-b border-slate-800 pb-2 mb-4">root@server:~/override#</div>
+                    <div id="l2-terminal-content" class="flex-1 text-emerald-500 flex flex-col justify-center items-center text-center p-2">
+                        <div class="text-5xl mb-4 opacity-50 animate-pulse">💻</div>
+                        <p class="text-slate-400 text-sm leading-relaxed">Menunggu Eksekutor...<br>Klik baris <span class="text-red-400 font-bold">ERROR</span> pada tabel.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="l2-success" class="hidden mt-8 text-center bg-emerald-900/20 border border-emerald-500/50 p-6 rounded-xl">
+                <p class="text-emerald-400 font-bold text-2xl mb-4 font-orbitron">SYSTEM FULLY RESTORED!</p>
+                <button onclick="window.completeLevel(2)" class="bg-emerald-600 hover:bg-emerald-500 text-white px-10 py-4 rounded-lg font-bold shadow-lg shadow-emerald-500/30 transition-all transform hover:scale-105 uppercase tracking-widest">Buka Laporan Akhir</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reflection-screen" class="screen w-full max-w-6xl pt-20 pb-10">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 mb-2 font-orbitron tracking-widest drop-shadow-lg">LAPORAN OPERASI PRO</h1>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <div class="w-full lg:w-5/12 bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-[0_0_30px_rgba(16,185,129,0.1)] relative overflow-hidden flex flex-col">
+                <div class="absolute top-[-20%] left-[-20%] w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                
+                <h3 class="text-xl font-bold text-indigo-400 mb-6 font-orbitron border-b border-slate-700 pb-3">Statistik Tim</h3>
+                
+                <div class="text-center mb-6">
+                    <p class="text-sm text-slate-500 font-bold uppercase mb-1">Total Skor Akhir:</p>
+                    <p class="text-6xl text-emerald-400 font-black font-orbitron drop-shadow-[0_0_15px_#10b981]" id="final-score">0</p>
+                    <div class="mt-4 inline-block bg-slate-800 px-4 py-1 rounded-full border border-slate-600">
+                        <span class="text-slate-300 text-sm font-bold">Grade Tim: </span>
+                        <span id="final-grade" class="text-2xl font-black text-yellow-400 font-orbitron ml-1">A</span>
+                    </div>
+                </div>
+
+                <div class="bg-black/40 border border-slate-800 rounded-xl p-5 font-mono text-sm mb-6 flex-1">
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center text-slate-300 border-b border-slate-700 pb-2">
+                            <span>Nama Tim:</span> <span class="font-bold text-white uppercase" id="final-team">---</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-300">
+                            <span>Analis & Eksekutor:</span> <span class="text-indigo-300"><span id="final-p1"></span> / <span id="final-p2"></span></span>
+                        </div>
+                        <hr class="border-slate-800 my-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400">Level 1 (Diagnosis):</span> <span class="text-emerald-400 font-bold">+<span id="stat-l1">0</span> Pts</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400">Level 2 (Terminal):</span> <span class="text-emerald-400 font-bold">+<span id="stat-l2">0</span> Pts</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-red-950/30 p-2 rounded -mx-2 px-2 border-l-2 border-red-500 mt-2">
+                            <span class="text-red-400">Total Penalti Ceroboh:</span> <span class="text-red-500 font-bold">-<span id="stat-penalti">0</span> Pts</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-auto">
+                    <button onclick="location.reload()" class="w-full bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-lg font-bold transition border border-slate-600 shadow-md">Main Lagi / Selesai</button>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-7/12 flex flex-col gap-6">
+                <div class="bg-indigo-950/30 border border-indigo-500/30 rounded-3xl p-6 relative flex-1 flex flex-col">
+                    <h3 class="font-bold text-indigo-300 mb-2 font-orbitron flex items-center gap-2"><span>💬</span> Laporan Evaluasi Akhir:</h3>
+                    <p class="text-slate-300 mb-3 text-sm leading-relaxed">Sistem komputer sangat kaku. Berdasarkan hukum <em>Garbage In, Garbage Out</em>, mengapa peran manusia masih dibutuhkan sebelum data diproses komputer?</p>
+                    <textarea id="refleksi-input" class="flex-1 w-full bg-black/50 border border-slate-700 rounded-lg p-4 text-white focus:border-emerald-500 outline-none resize-none min-h-[120px] text-sm transition" placeholder="Diskusikan berdua dan ketik kesimpulan akhir tim kalian di sini..."></textarea>
+                    
+                    <button id="btn-submit-refleksi" onclick="window.submitRefleksi()" class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-lg transition flex justify-center items-center gap-2 transform hover:scale-[1.02] shadow-lg shadow-emerald-600/30 font-orbitron tracking-wider">
+                        <span>📡</span> SIMPAN & KIRIM SKOR KE SERVER GURU
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // MENGGUNAKAN KONFIGURASI DARI GAMBAR BAPAK/IBU GURU
+        const firebaseConfig = {
+            apiKey: "AIzaSyAlqkFPPhgX9I_ySOJaqFV6ApvEcA5pDo0",
+            authDomain: "microteaching-data-clean.firebaseapp.com",
+            projectId: "microteaching-data-clean",
+            storageBucket: "microteaching-data-clean.firebasestorage.app",
+            messagingSenderId: "88274384381",
+            appId: "1:88274384381:web:a3c6b4737425ab0f7d1594",
+            measurementId: "G-BN111TRS35"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+
+        async function initAuth() {
+            try {
+                await signInAnonymously(auth);
+            } catch(error) {
+                console.error("Gagal Firebase Auth:", error);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if(user && document.getElementById('teacher-screen').classList.contains('active')) {
+                setupLiveLeaderboard();
+            }
+        });
+
+        initAuth();
+
+        // ---------------------------------------------------------
+        // FUNGSI KHUSUS MODE GURU (LIVE LEADERBOARD)
+        // ---------------------------------------------------------
+        window.enterTeacherMode = function() {
+            window.showScreen('teacher-screen');
+            if (currentUser) setupLiveLeaderboard();
+        };
+
+        function setupLiveLeaderboard() {
+            if (!currentUser) return;
+            const colRef = collection(db, 'klasemen_kelas');
+            
+            onSnapshot(colRef, (snapshot) => {
+                const teams = [];
+                snapshot.forEach(doc => { teams.push({ id: doc.id, ...doc.data() }); });
+                
+                teams.sort((a, b) => b.score - a.score);
+                renderLiveLeaderboard(teams);
+            }, (error) => {
+                console.error("Gagal memuat live leaderboard:", error);
+            });
+        }
+
+        function renderLiveLeaderboard(teams) {
+            const tbody = document.getElementById('live-leaderboard-body');
+            if(!tbody) return;
+            tbody.innerHTML = '';
+            
+            if(teams.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center p-12 text-slate-500 italic font-bold">Belum ada tim yang menyelesaikan misi...</td></tr>';
+                return;
+            }
+
+            teams.forEach((team, index) => {
+                const rank = index + 1;
+                let rankIcon = rank;
+                if(rank === 1) rankIcon = '🥇';
+                if(rank === 2) rankIcon = '🥈';
+                if(rank === 3) rankIcon = '🥉';
+
+                const gradeInfo = window.getGrade(team.score);
+                const delay = index * 0.1;
+
+                tbody.innerHTML += `
+                    <tr class="leaderboard-row hover:bg-slate-800 transition-colors border-b border-slate-800/50" style="animation-delay: ${delay}s">
+                        <td class="p-4 text-center font-bold text-xl">${rankIcon}</td>
+                        <td class="p-4">
+                            <div class="text-emerald-400 font-bold uppercase tracking-wider">${team.teamName}</div>
+                            <div class="text-xs text-slate-500 font-mono mt-1">A: ${team.p1} | E: ${team.p2}</div>
+                        </td>
+                        <td class="p-4 text-center font-bold ${gradeInfo.c} font-orbitron text-2xl">${team.grade}</td>
+                        <td class="p-4 text-right font-black text-white font-mono text-xl">${team.score}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // KIRIM SKOR KE CLOUD FIREBASE
+        window.submitRefleksi = async function() {
+            const btn = document.getElementById('btn-submit-refleksi');
+            const txt = document.getElementById('refleksi-input');
+            
+            if(txt.value.trim() === "") {
+                window.playSound('error');
+                btn.innerHTML = "⚠️ Tulis evaluasi terlebih dahulu!";
+                btn.classList.replace('bg-emerald-600', 'bg-red-600');
+                btn.classList.add('shake');
+                setTimeout(() => {
+                    btn.innerHTML = "<span>📡</span> SIMPAN & KIRIM SKOR KE SERVER GURU";
+                    btn.classList.replace('bg-red-600', 'bg-emerald-600');
+                    btn.classList.remove('shake');
+                }, 2000);
+                return;
+            }
+
+            if (!currentUser) {
+                alert("Koneksi ke Server Guru terputus. Pastikan perangkat Anda terhubung internet.");
+                return;
+            }
+
+            try {
+                btn.innerHTML = "MENGIRIM DATA...";
+                btn.classList.replace('bg-emerald-600', 'bg-slate-700');
+                
+                const colRef = collection(db, 'klasemen_kelas');
+                const gradeInfo = window.getGrade(state.score);
+                
+                await addDoc(colRef, {
+                    teamName: state.teamName,
+                    p1: state.p1,
+                    p2: state.p2,
+                    score: state.score,
+                    grade: gradeInfo.l,
+                    refleksi: txt.value,
+                    timestamp: new Date().getTime()
+                });
+                
+                window.playSound('success');
+                btn.innerHTML = "✅ SKOR BERHASIL TERKIRIM!";
+                btn.classList.replace('bg-slate-700', 'bg-indigo-600');
+                btn.disabled = true;
+                txt.disabled = true;
+                txt.classList.add('opacity-50');
+
+            } catch (error) {
+                console.error("Gagal mengirim:", error);
+                window.playSound('error');
+                btn.innerHTML = "❌ GAGAL KIRIM. KLIK COBA LAGI";
+                btn.classList.replace('bg-slate-700', 'bg-red-600');
+            }
+        }
+    </script>
+
+    <script>
+        // ---------------------------------------------------------
+        // GAME LOGIC & AUDIO JAVASCRIPT
+        // ---------------------------------------------------------
+        let audioEnabled = true;
+        let audioCtx;
+
+        window.toggleAudio = function() {
+            audioEnabled = !audioEnabled;
+            const btn = document.getElementById('audio-toggle');
+            btn.innerHTML = audioEnabled ? '🔊' : '🔇';
+            btn.style.opacity = audioEnabled ? '1' : '0.5';
+        }
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        window.playSound = function(type) {
+            if (!audioEnabled) return;
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'success') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'type') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(800, now);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            } else if (type === 'levelup') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(440, now); osc.frequency.setValueAtTime(554.37, now + 0.1); osc.frequency.setValueAtTime(659.25, now + 0.2); osc.frequency.setValueAtTime(880, now + 0.3);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.3); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.start(now); osc.stop(now + 0.8);
+            }
+        }
+
+        const state = {
+            p1: '', p2: '', teamName: '',
+            score: 0, baseScoreL1: 0, baseScoreL2: 0, penalty: 0,
+            l1Done: false, l2Done: false,
+            l1CardsLeft: 6, l2ErrorsLeft: 6
+        };
+
+        const hud = document.getElementById('hud');
+
+        window.showScreen = function(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            (id !== 'menu-screen' && id !== 'teacher-screen') ? hud.classList.remove('hidden') : hud.classList.add('hidden');
+        }
+
+        function addScore(points, isPenalty = false) {
+            state.score += points;
+            if(isPenalty) state.penalty += Math.abs(points);
+            
+            const hudScore = document.getElementById('hud-score');
+            hudScore.innerText = state.score;
+            hudScore.classList.add(isPenalty ? 'text-red-500' : 'scale-150');
+            setTimeout(() => hudScore.classList.remove('scale-150', 'text-red-500'), 300);
+        }
+
+        window.registerTeam = function() {
+            initAudio();
+            const p1 = document.getElementById('player1').value.trim();
+            const p2 = document.getElementById('player2').value.trim();
+            
+            if(!p1 || !p2) {
+                window.playSound('error');
+                document.getElementById('menu-error').classList.remove('hidden');
+                return;
+            }
+
+            window.playSound('levelup');
+            state.p1 = p1; state.p2 = p2; state.teamName = `${p1} & ${p2}`;
+            
+            document.getElementById('hud-team').innerText = state.teamName;
+            document.getElementById('final-team').innerText = state.teamName;
+            document.getElementById('final-p1').innerText = p1;
+            document.getElementById('final-p2').innerText = p2;
+            
+            window.showScreen('map-screen');
+        }
+
+        window.loadLevel = function(num) {
+            window.playSound('type');
+            if (num === 1) { initL1(); window.showScreen('level1-screen'); } 
+            else if (num === 2 && state.l1Done) { initL2(); window.showScreen('level2-screen'); } 
+            else if (num === 3 && state.l2Done) { generateScoreboard(); window.showScreen('reflection-screen'); }
+        }
+
+        window.completeLevel = function(num) {
+            window.playSound('levelup');
+            if (num === 1) {
+                state.l1Done = true;
+                document.getElementById('node-1').classList.add('completed');
+                document.getElementById('badge-1').classList.remove('hidden');
+                
+                const n2 = document.getElementById('node-2');
+                n2.classList.remove('locked'); n2.classList.add('unlocked', 'border-indigo-500'); n2.classList.remove('border-slate-700');
+                document.getElementById('icon-2').classList.remove('grayscale', 'opacity-50');
+                document.getElementById('title-2').classList.replace('text-slate-500', 'text-white');
+                document.getElementById('desc-2').classList.replace('text-slate-500', 'text-slate-400');
+                document.getElementById('path-line').style.width = '50%';
+            } else if (num === 2) {
+                state.l2Done = true;
+                document.getElementById('node-2').classList.add('completed');
+                document.getElementById('badge-2').classList.remove('hidden');
+
+                const n3 = document.getElementById('node-3');
+                n3.classList.remove('locked'); n3.classList.add('unlocked', 'border-indigo-500'); n3.classList.remove('border-slate-700');
+                document.getElementById('icon-3').classList.remove('grayscale', 'opacity-50');
+                document.getElementById('title-3').classList.replace('text-slate-500', 'text-white');
+                document.getElementById('desc-3').classList.replace('text-slate-500', 'text-slate-400');
+                document.getElementById('path-line').style.width = '100%';
+            }
+            window.showScreen('map-screen');
+        }
+
+        // L1 Drag & Drop
+        const l1Data = [
+            { id: 'c1', t: 'Andi W.<br><span class="text-red-400 text-xs font-mono">No HP: "N/A"</span>', type: 'kosong' },
+            { id: 'c2', t: 'Budi Santoso<br><span class="text-red-400 text-xs font-mono">Submit form 2 Kali</span>', type: 'duplikat' },
+            { id: 'c3', t: 'Kevin<br><span class="text-red-400 text-xs font-mono">JK: LAKI-LAKI</span>', type: 'inkonsisten' },
+            { id: 'c4', t: 'Sarah<br><span class="text-red-400 text-xs font-mono">Kelas: 10.RPL.1</span>', type: 'inkonsisten' },
+            { id: 'c5', t: 'Dinda<br><span class="text-red-400 text-xs font-mono">JK: - (Strip)</span>', type: 'kosong' },
+            { id: 'c6', t: 'Clara Bella<br><span class="text-red-400 text-xs font-mono">Tercatat 2x di DB</span>', type: 'duplikat' }
+        ];
+
+        function initL1() {
+            if(state.l1Done) return;
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
+            [...l1Data].sort(() => 0.5 - Math.random()).forEach(c => {
+                container.innerHTML += `<div id="${c.id}" class="draggable bg-indigo-950 border border-indigo-500 text-slate-200 p-3 rounded-lg w-[140px] shadow-lg text-sm text-center font-bold" draggable="true" ondragstart="window.drag(event)" data-type="${c.type}">${c.t}</div>`;
+            });
+        }
+
+        window.allowDrop = (ev) => { ev.preventDefault(); ev.currentTarget.classList.add('dragover'); };
+        window.dragLeave = (ev) => ev.currentTarget.classList.remove('dragover');
+        window.drag = (ev) => { ev.dataTransfer.setData("text", ev.target.id); window.playSound('type'); };
+        
+        window.drop = (ev) => {
+            ev.preventDefault();
+            const dz = ev.currentTarget;
+            dz.classList.remove('dragover');
+            
+            const el = document.getElementById(ev.dataTransfer.getData("text"));
+            if(!el) return;
+
+            if (el.getAttribute('data-type') === dz.getAttribute('data-target')) {
+                window.playSound('success');
+                dz.querySelector('.drop-container').appendChild(el);
+                el.setAttribute('draggable', 'false');
+                el.className = "bg-emerald-900 border border-emerald-500 text-white p-2 rounded-lg w-full text-xs text-center font-bold shadow-md";
+                dz.classList.add('correct'); setTimeout(() => dz.classList.remove('correct'), 500);
+                
+                addScore(20); state.baseScoreL1 += 20;
+                state.l1CardsLeft--;
+                if(state.l1CardsLeft === 0) document.getElementById('l1-success').classList.remove('hidden');
+            } else {
+                window.playSound('error');
+                dz.classList.add('wrong'); setTimeout(() => dz.classList.remove('wrong'), 500);
+                addScore(-10, true);
+            }
+        }
+
+        // L2 Terminal - FOKUS 3 JENIS ANOMALI DENGAN HINT PILIHAN
+        const l2Data = [
+            { id: '001', n: 'Alex', k: 'X-IPS', h: '08112233', s: '✅ AMAN', err: false },
+            { id: '002', n: 'Bima', k: '<span class="text-red-400">X.TKJ.2</span>', h: '08223344', s: '❌ INKONSISTEN', err: true, ans: 'X-TKJ-2', p: '> Format jurusan salah.\n> Hint: Gunakan strip (-). Ketik perbaikannya:' },
+            { id: '003', n: 'Citra', k: 'X-RPL', h: '<span class="text-red-400">NULL</span>', s: '❌ KOSONG', err: true, ans: 'TANDAI', p: '> Data kontak hilang.\n> Hint: Ketik (TANDAI atau BIARKAN):' },
+            { id: '004', n: 'Doni', k: 'X-AKL', h: '08556677', s: '❌ DUPLIKAT', err: true, ans: 'HAPUS', p: '> Terindikasi ganda dengan baris 012.\n> Hint: Ketik (HAPUS atau BIARKAN):' },
+            { id: '005', n: 'Eva', k: '<span class="text-red-400">Sepuluh.IPA</span>', h: '08778899', s: '❌ INKONSISTEN', err: true, ans: 'X-IPA', p: '> Format kelas tidak standar.\n> Hint: Ubah ke X-[Jurusan]. Ketik perbaikannya:' },
+            { id: '006', n: 'Fajar', k: '<span class="text-red-400">N/A</span>', h: '08990011', s: '❌ KOSONG', err: true, ans: 'TANDAI', p: '> Teks "N/A" (Not Available).\n> Hint: Ketik (TANDAI atau BIARKAN):' },
+            { id: '007', n: 'Doni', k: 'X-AKL', h: '08556677', s: '❌ DUPLIKAT', err: true, ans: 'HAPUS', p: '> Data tersubmit dua kali.\n> Hint: Ketik (HAPUS atau BIARKAN):' }
+        ];
+
+        let currL2Id = null;
+
+        function initL2() {
+            if(state.l2Done) return;
+            const tbody = document.getElementById('l2-table');
+            tbody.innerHTML = '';
+            l2Data.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.id = `row-${r.id}`;
+                tr.className = `transition ${r.err ? 'hover:bg-slate-700 cursor-pointer' : 'opacity-40'}`;
+                tr.innerHTML = `<td class="p-2 md:p-3">${r.id}</td><td class="p-2 md:p-3">${r.n}</td><td class="p-2 md:p-3">${r.k}</td><td class="p-2 md:p-3">${r.h}</td><td class="p-2 md:p-3 text-center font-bold ${r.err ? 'text-red-400' : 'text-slate-500'}" id="st-${r.id}">${r.s}</td>`;
+                if(r.err) tr.onclick = () => { window.playSound('type'); openTerm(r.id); };
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openTerm(id) {
+            const r = l2Data.find(x => x.id === id);
+            if(!r.err) return;
+            currL2Id = id;
+            const c = document.getElementById('l2-terminal-content');
+            c.className = "flex-1 text-emerald-400 text-left p-3";
+            c.innerHTML = `
+                <div class="mb-3 text-slate-300 border-b border-slate-800 pb-2">Target ID: <span class="font-bold text-white">${id}</span></div>
+                <div class="mb-3 whitespace-pre-wrap leading-relaxed">${r.p}</div>
+                <div class="flex items-center"><span class="mr-2 text-white">></span><input type="text" id="term-in" class="terminal-input font-bold" autocomplete="off" onkeydown="window.checkTerm(event)"></div>
+                <div id="term-err" class="mt-3 text-red-500 hidden font-bold bg-red-900/30 p-2 text-xs border-l-4 border-red-500">❌ Akses Ditolak: Pilihan/Sintaks Salah (-15 Poin)!</div>
+            `;
+            setTimeout(() => document.getElementById('term-in').focus(), 100);
+        }
+
+        window.checkTerm = function(e) {
+            if (e.key === 'Enter') {
+                const val = e.target.value.trim().toUpperCase();
+                const r = l2Data.find(x => x.id === currL2Id);
+                
+                if (val === r.ans) {
+                    window.playSound('success'); r.err = false;
+                    const tr = document.getElementById(`row-${r.id}`);
+                    tr.className = 'bg-emerald-900/20'; tr.onclick = null;
+                    document.getElementById(`st-${r.id}`).innerHTML = '✅ SOLVED'; document.getElementById(`st-${r.id}`).className = 'p-2 md:p-3 text-center font-bold text-emerald-500';
+                    
+                    addScore(30); state.baseScoreL2 += 30; state.l2ErrorsLeft--;
+                    document.getElementById('l2-terminal-content').innerHTML = `<div class="h-full flex flex-col justify-center items-center text-center"><div class="text-5xl mb-3">✅</div><p class="text-emerald-400 font-bold tracking-widest">DATA DIKOREKSI</p></div>`;
+
+                    if(state.l2ErrorsLeft === 0) {
+                        window.playSound('levelup'); document.getElementById('l2-success').classList.remove('hidden');
+                    }
+                } else {
+                    window.playSound('error');
+                    document.getElementById('term-err').classList.remove('hidden');
+                    document.getElementById('l2-terminal-content').classList.add('shake'); setTimeout(() => document.getElementById('l2-terminal-content').classList.remove('shake'), 400);
+                    addScore(-15, true); e.target.value = '';
+                }
+            } else { window.playSound('type'); }
+        }
+
+        window.getGrade = function(score) {
+            if(score >= 290) return { l: 'S', c: 'text-fuchsia-400' }; 
+            if(score >= 220) return { l: 'A', c: 'text-emerald-400' };
+            if(score >= 150) return { l: 'B', c: 'text-blue-400' };
+            if(score >= 80)  return { l: 'C', c: 'text-yellow-400' };
+            return { l: 'D', c: 'text-red-400' };
+        }
+
+        function generateScoreboard() {
+            document.getElementById('final-score').innerText = state.score;
+            document.getElementById('stat-l1').innerText = state.baseScoreL1;
+            document.getElementById('stat-l2').innerText = state.baseScoreL2;
+            document.getElementById('stat-penalti').innerText = state.penalty;
+            
+            const gradeInfo = window.getGrade(state.score);
+            const gradeEl = document.getElementById('final-grade');
+            gradeEl.innerText = gradeInfo.l;
+            gradeEl.className = `text-2xl font-black font-orbitron ml-1 ${gradeInfo.c}`;
+        }
+    </script>
+</body>
+</html>
