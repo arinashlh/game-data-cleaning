@@ -50,9 +50,6 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-    <audio id="bg-music" loop>
-        <source src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3" type="audio/mpeg">
-    </audio>
     <div id="audio-toggle" class="fixed bottom-4 right-4 z-50 bg-slate-800 p-3 rounded-full cursor-pointer opacity-80 hover:opacity-100 transition shadow-[0_0_15px_rgba(0,0,0,0.5)] border border-slate-600" onclick="window.toggleAudio()" title="Toggle Sound">🔊</div>
 
     <div id="hud" class="fixed top-0 left-0 w-full bg-slate-950/90 backdrop-blur border-b border-slate-800 p-3 z-50 hidden flex justify-between items-center px-4 md:px-8">
@@ -112,8 +109,8 @@
 
     <div id="leaderboard-screen" class="screen w-full max-w-6xl pt-10">
         <div class="text-center mb-8 relative">
-            <button onclick="location.reload()" class="absolute top-0 left-0 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 border border-slate-700">
-                <span>🏠</span> Kembali Ke Menu
+            <button onclick="window.showScreen('menu-screen')" class="absolute top-0 left-0 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 border border-slate-700">
+                <span>🏠</span> Kembali Ke Menu Utama
             </button>
             <h1 class="text-5xl font-black text-emerald-400 font-orbitron drop-shadow-[0_0_10px_#10b981]">PAPAN KLASEMEN</h1>
             <p class="text-xl text-slate-400 font-bold mt-2 uppercase tracking-widest">Live Server Rank</p>
@@ -254,7 +251,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Konfigurasi Database
+        // Konfigurasi Database Ibu Arina
         const firebaseConfig = {
             apiKey: "AIzaSyAlqkFPPhgX9I_ySOJaqFV6ApvEcA5pDo0",
             authDomain: "microteaching-data-clean.firebaseapp.com",
@@ -311,18 +308,15 @@
         }
 
         // ==========================================
-        // 2. STATE & AUDIO & MUSIK LATAR
+        // 2. STATE & AUDIO SFX (Tanpa BGM)
         // ==========================================
         const state = { p1: '', p2: '', teamName: '', score: 0, baseScoreL1: 0, baseScoreL2: 0, penalty: 0, l1CardsLeft: 6, l2ErrorsLeft: 6 };
         let audioEnabled = true; let audioCtx;
-        const bgMusic = document.getElementById('bg-music');
-        bgMusic.volume = 0.3; // Volume musik latar agar tidak menutupi efek suara
 
         window.toggleAudio = function() {
             audioEnabled = !audioEnabled;
             document.getElementById('audio-toggle').innerHTML = audioEnabled ? '🔊' : '🔇';
             document.getElementById('audio-toggle').style.opacity = audioEnabled ? '1' : '0.5';
-            if (audioEnabled) { bgMusic.play(); } else { bgMusic.pause(); }
         }
 
         window.playSound = function(type) {
@@ -375,12 +369,10 @@
         function initL1() {
             const container = document.getElementById('cards-container'); container.innerHTML = '';
             [...l1Data].sort(() => 0.5 - Math.random()).forEach(c => {
-                // Menambahkan onclick untuk HP
                 container.innerHTML += `<div id="${c.id}" class="draggable bg-indigo-950 border border-indigo-500 text-slate-200 p-3 rounded-lg w-[140px] shadow-lg text-sm text-center font-bold" draggable="true" ondragstart="window.drag(event)" onclick="window.selectCard('${c.id}')" data-type="${c.type}">${c.t}</div>`;
             });
         }
 
-        // Logika Untuk HP (Klik Kartu)
         window.selectCard = function(id) {
             if (selectedCard) { document.getElementById(selectedCard).classList.remove('selected-card'); }
             if (selectedCard === id) { selectedCard = null; return; }
@@ -388,9 +380,8 @@
             document.getElementById(id).classList.add('selected-card');
         }
 
-        // Logika Untuk HP (Klik Dropzone)
         window.clickDrop = function(targetType, zoneElement) {
-            if (!selectedCard) return; // Jika tidak ada kartu yg sedang diklik, abaikan
+            if (!selectedCard) return; 
             const el = document.getElementById(selectedCard); const cardType = el.getAttribute('data-type');
             
             if (cardType === targetType) {
@@ -407,7 +398,6 @@
             }
         }
 
-        // Logika Drag & Drop Asli (Untuk Laptop)
         window.allowDrop = (ev) => { ev.preventDefault(); ev.currentTarget.classList.add('dragover'); };
         window.dragLeave = (ev) => ev.currentTarget.classList.remove('dragover');
         window.drag = (ev) => { ev.dataTransfer.setData("text", ev.target.id); window.playSound('type'); };
@@ -426,7 +416,7 @@
         }
 
         // ==========================================
-        // 4. LOGIKA LEVEL 2 (TIDAK ADA PERUBAHAN)
+        // 4. LOGIKA LEVEL 2
         // ==========================================
         const l2Data = [
             { id: '001', n: 'Alex', k: 'X-IPS', h: '0811', s: '✅ AMAN', err: false },
@@ -481,8 +471,6 @@
             const p1 = document.getElementById('player1').value.trim(); const p2 = document.getElementById('player2').value.trim();
             if(!p1 || !p2) { document.getElementById('menu-error').classList.remove('hidden'); return; }
             
-            // Putar Musik Latar saat tim mendaftar (karena butuh interaksi user)
-            if(audioEnabled) { bgMusic.play().catch(e => console.log("Audio diblokir browser")); }
             window.playSound('levelup');
             
             state.p1 = p1; state.p2 = p2; state.teamName = `${p1} & ${p2}`;
